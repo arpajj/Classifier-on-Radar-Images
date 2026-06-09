@@ -254,30 +254,3 @@ def get_logger(name="radar_classifier", log_file="train.log"):
     logger.addHandler(fh)
 
     return logger
-
-
-# ══════════════════════════════════════════════════════════════════════
-# 7.  SANITY CHECK
-# ══════════════════════════════════════════════════════════════════════
-if __name__ == '__main__':
-    logger = get_logger()
-    logger.info("utils.py sanity check …")
-
-    # Dummy predictions
-    labels = [0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5]
-    preds  = [0, 1, 2, 3, 4, 4, 0, 0, 2, 3, 5, 5]
-
-    metrics = compute_metrics(labels, preds)
-    logger.info(f"Accuracy : {metrics['accuracy']:.2f}%")
-    logger.info(f"F1 macro : {metrics['f1_macro']:.2f}%")
-    logger.info(f"Report:\n{metrics['report']}")
-
-    cm_path = plot_confusion_matrix(labels, preds)
-    logger.info(f"Confusion matrix saved → {cm_path}")
-
-    # Dummy curves
-    n = 20
-    curve_path = plot_training_curves(np.linspace(1.5, 0.3, n), np.linspace(1.8, 0.5, n),
-                                    np.linspace(40,  90,  n), np.linspace(35,  85,  n))
-    logger.info(f"Training curves saved → {curve_path}")
-    logger.info("utils.py sanity check passed.")
