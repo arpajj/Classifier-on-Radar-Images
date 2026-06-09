@@ -27,7 +27,7 @@ This repository implements a three-stream CNN for human activity classification 
 pip install -r requirements.txt
 ```
 
-2. Set dataset path in `config.py` or set the environment variable `RADAR_DATASET_ROOT`.
+2. Set the dataset path in `config.py` or set the environment variable `DATASET_ROOT`. Also chose the desired path for storing the trained models via setting the variable `OUTPUT_DIR`. The checkpoints of the trained models will be saved in a folder `checkpoints` inside that folder. 
 3. Run training:
 
 ```bash
