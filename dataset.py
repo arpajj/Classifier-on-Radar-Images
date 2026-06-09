@@ -169,7 +169,6 @@ def get_dataloaders(root: str = config.DATASET_ROOT, folders: list = config.DATA
 # ══════════════════════════════════════════════════════════════════════
 # 5.  QUICK SANITY CHECK
 # ══════════════════════════════════════════════════════════════════════
-
 if __name__ == '__main__':
     print("Scanning dataset …")
     train_loader, val_loader, test_loader = get_dataloaders()
