@@ -133,8 +133,8 @@ def main():
 
     # ── Model ─────────────────────────────────────────────────────────
     logger.info("Instantiating model …")
-    model = ThreeStreamCNN(num_classes = config.NUM_CLASSES, feature_dim = config.STREAM_FEATURE_DIM, dropout = config.DROPOUT)
-
+    model = ThreeStreamCNN(num_classes = config.NUM_CLASSES, feature_dim = config.STREAM_FEATURE_DIM, dropout = config.DROPOUT, fusion_type = config.FUSION_TYPE)
+  
     # Multi-GPU support
     if torch.cuda.device_count() > 1:
         logger.info(f" Wrapping model in DataParallel ({torch.cuda.device_count()} GPUs)")
