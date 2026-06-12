@@ -102,7 +102,7 @@ class StreamCNN(nn.Module):
 class ThreeStreamCNN(nn.Module):
     """
     Three independent StreamCNN encoders (one per radar representation),
-    followed by late fusion (concatenation) and a shared classifier head.
+    that uses mid fusion or late fusion (both use concatenation) and a final classifier head.
 
     Input  : x  [B, 3, H, W]
                  x[:,0,:,:]  → Spectrogram
@@ -112,40 +112,76 @@ class ThreeStreamCNN(nn.Module):
     Output : logits  [B, NUM_CLASSES]
     """
 
-    def __init__(self,num_classes: int = config.NUM_CLASSES, feature_dim: int = config.STREAM_FEATURE_DIM, dropout: float = config.DROPOUT):
+    def __init__(self, num_classes = config.NUM_CLASSES, feature_dim = config.STREAM_FEATURE_DIM, dropout = config.DROPOUT, fusion_type = config.FUSION_TYPE):
+
         super().__init__()
+        self.fusion_type = fusion_type
 
-        # Three independent streams
-        self.stream_spec = StreamCNN(feature_dim, dropout) # Spectrogram
-        self.stream_rt = StreamCNN(feature_dim, dropout) # Range-Time
-        self.stream_rd = StreamCNN(feature_dim, dropout) # Range-Doppler
+        print(f"Fusion type ----> {fusion_type}")
 
-        # Late fusion classifier
-        # Fused dim = 3 * feature_dim
-        fused_dim = 3 * feature_dim
+        if fusion_type == 'late':
+            # Each stream has its own FULL encoder + FC head
+            self.stream_spec = StreamCNN(feature_dim, dropout)
+            self.stream_rt   = StreamCNN(feature_dim, dropout)
+            self.stream_rd   = StreamCNN(feature_dim, dropout)
+            fused_dim = 3 * feature_dim
 
-        self.classifier = nn.Sequential(nn.Linear(fused_dim, fused_dim//2, bias=False), nn.BatchNorm1d(fused_dim//2),
-            nn.ReLU(inplace=True), nn.Dropout(dropout), nn.Linear(fused_dim//2, fused_dim//4, bias=False), 
-            nn.BatchNorm1d(fused_dim//4), nn.ReLU(inplace=True), nn.Dropout(dropout), nn.Linear(fused_dim//4, num_classes))
+        elif fusion_type == 'mid':
+            # Each stream shares the same encoder structure but NOT weights
+            # Fusion happens after Block 2 (after 32x32 feature maps)
+            # Then a shared encoder continues from Block 3 onwards
+            self.stream_spec_enc = nn.Sequential(
+                ConvBlock(1, 32), nn.MaxPool2d(2, 2),   # 128→64
+                ConvBlock(32, 64), nn.MaxPool2d(2, 2),  # 64→32
+            )
+            self.stream_rt_enc = nn.Sequential(ConvBlock(1, 32), nn.MaxPool2d(2, 2), ConvBlock(32, 64), nn.MaxPool2d(2, 2))
+            self.stream_rd_enc = nn.Sequential(ConvBlock(1, 32), nn.MaxPool2d(2, 2), ConvBlock(32, 64), nn.MaxPool2d(2, 2))
+            # After mid fusion: 3 streams × 64 channels → 192 channels
+            # Shared encoder continues
+            self.shared_enc = nn.Sequential(ConvBlock(192, 128), nn.MaxPool2d(2, 2),  # 32→16
+                ConvBlock(128, 256), nn.AdaptiveAvgPool2d((1, 1)))
+            self.fc_head = nn.Sequential(nn.Flatten(),nn.Linear(256, feature_dim, bias=False),
+                        nn.BatchNorm1d(feature_dim),nn.ReLU(inplace=True),nn.Dropout(dropout))
+            fused_dim = feature_dim   # only one feature vector after shared enc
+
+        else:
+            raise ValueError(f"fusion_type must be 'late' or 'mid', got '{fusion_type}'")
+
+        # Classifier head (same for both fusion types)
+        self.classifier = nn.Sequential(
+            nn.Linear(fused_dim, fused_dim // 2, bias=False),
+            nn.BatchNorm1d(fused_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(fused_dim // 2, fused_dim // 4, bias=False),
+            nn.BatchNorm1d(fused_dim // 4),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(fused_dim // 4, num_classes))
 
     def forward(self, x):
-        # Split into 3 single-channel inputs
-        x_spec = x[:, 0:1, :, :]   # [B, 1, H, W]
-        x_rt   = x[:, 1:2, :, :]   # [B, 1, H, W]
-        x_rd   = x[:, 2:3, :, :]   # [B, 1, H, W]
+        x_spec = x[:, 0:1, :, :]
+        x_rt   = x[:, 1:2, :, :]
+        x_rd   = x[:, 2:3, :, :]
 
-        # Pass through each stream independently
-        f_spec = self.stream_spec(x_spec)   # [B, feature_dim]
-        f_rt   = self.stream_rt(x_rt)       # [B, feature_dim]
-        f_rd   = self.stream_rd(x_rd)       # [B, feature_dim]
+        if self.fusion_type == 'late':
+            f_spec = self.stream_spec(x_spec)
+            f_rt   = self.stream_rt(x_rt)
+            f_rd   = self.stream_rd(x_rd)
+            fused  = torch.cat([f_spec, f_rt, f_rd], dim=1)  # [B, 3*feature_dim]
 
-        # Late fusion: concatenate feature vectors
-        fused = torch.cat([f_spec, f_rt, f_rd], dim=1)   # [B, 3*feature_dim]
+        elif self.fusion_type == 'mid':
+            # Each stream encodes independently up to Block 2
+            f_spec = self.stream_spec_enc(x_spec)   # [B, 64, 32, 32]
+            f_rt   = self.stream_rt_enc(x_rt)       # [B, 64, 32, 32]
+            f_rd   = self.stream_rd_enc(x_rd)       # [B, 64, 32, 32]
+            # Concatenate along channel dim → mid fusion
+            fused  = torch.cat([f_spec, f_rt, f_rd], dim=1)  # [B, 192, 32, 32]
+            # Continue with shared encoder
+            fused  = self.shared_enc(fused)          # [B, 256, 1, 1]
+            fused  = self.fc_head(fused)             # [B, feature_dim]
 
-        # Classify
-        logits = self.classifier(fused)   # [B, num_classes]
-
-        return logits
+        return self.classifier(fused)
 
 # ══════════════════════════════════════════════════════════════════════
 # 4.  MODEL SUMMARY UTILITY
