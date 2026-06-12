@@ -119,9 +119,9 @@ DEVICE         = "cuda"   # will fall back to "cpu" if no GPU found
 # Per-stream CNN feature size before fusion
 STREAM_FEATURE_DIM = 256
 
-# Fusion strategy: 'late' (concatenate after per-stream FC) 
-#                  'mid'  (concatenate after last conv block)
-FUSION_TYPE = 'late' # The model currently implements only the 'late' fusion.
+# Fusion strategy: 'late' (concatenate after per-stream FC finishes) 
+#                  'mid'  (concatenate after 2 conv blocks)
+FUSION_TYPE = 'late' # or 'mid'
  
 # Dropout probability in classifier head
 DROPOUT = 0.5
