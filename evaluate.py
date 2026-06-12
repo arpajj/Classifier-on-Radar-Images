@@ -111,8 +111,8 @@ def main():
 
     # ── Model + checkpoint ────────────────────────────────────────────
     logger.info("Loading model from checkpoint …")
-    model = ThreeStreamCNN(num_classes=config.NUM_CLASSES, feature_dim=config.STREAM_FEATURE_DIM, dropout=config.DROPOUT)
-
+    model = ThreeStreamCNN(num_classes=config.NUM_CLASSES, feature_dim=config.STREAM_FEATURE_DIM, dropout=config.DROPOUT, fusion_type=config.FUSION_TYPE)
+  
     # Handle DataParallel checkpoint if saved with multi-GPU
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model)
